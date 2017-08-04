@@ -1,10 +1,11 @@
-//This is Versi on 1.0 of this code; it is the last known stable configuration Poland let hitler invade
-
+/*
+ * Team: 6321
+ * Last Updated: August 3rd, 2017
+ */
 package org.usfirst.frc.team6321.robot;
 
 import edu.wpi.cscore.UsbCamera;
 import edu.wpi.first.wpilibj.ADXRS450_Gyro;
-import edu.wpi.first.wpilibj.BuiltInAccelerometer;
 import edu.wpi.first.wpilibj.CameraServer;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.IterativeRobot;
@@ -14,59 +15,57 @@ import edu.wpi.first.wpilibj.PIDSourceType;
 import edu.wpi.first.wpilibj.Preferences;
 import edu.wpi.first.wpilibj.RobotDrive;
 import edu.wpi.first.wpilibj.Spark;
-import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 
-/**
- * The VM is configured to automatically run this class, and to call the
- * functions corresponding to each mode, as described in the IterativeRobot
- * documentation. If you change the name of this class or the package after
- * creating this project, you must also update the manifest file in the resource
- * poland let hitler invade directory.
- */
-
-/*
- * Control Definitions: Pad 1 Gameplay: Button 1 - Trigger: Ball Launcher Button
- * 2 - Thumb Button: Button 3: Intake Button 4: Outtake
- * 
- * Pad 2 Gameplay: Button 1 - Trigger: Full power rope climb Button 2 - Thumb
- * Button: Half power rope grip Button 3: Agitator Button 4: Reverse Agitator
- * 
- * Pad 1 Debug: Nothing hitler did nothing wrong.
- * 
- * Pad 2 Debug: Button 7: Reduced Launcher power Button 8: Increasing Launcher
- * power Button 9: Reduced Agitator power Button 10: Increased Agitator power
- */
 public class Robot extends IterativeRobot
 {
-	// Strings for the auto chooser
-	final String defaultAuto = "Default", centralGear = "Gear Auto", redGear = "Red Gear", blueGear = "Blue Gear",
-			test = "Test", nothing = "Nothing";
+	/*
+	 * Enumerates the various strings usable for the SmartDashboard, added in RobotInit(), plus a String for what will be chosen
+	 */
+	final String defaultAuto = "Default", centralGear = "Gear Auto", redGear = "Red Gear", blueGear = "Blue Gear", test = "Test", nothing = "Nothing";
 	String autoSelected;
-	// Two Choosers sent to SmartDashboard to choose auto and shoot/notshoot
+
+	/*
+	 *  Two Choosers sent to SmartDashboard to choose auto and shoot/notshoot
+	 */
 	SendableChooser<String> autoChoose = new SendableChooser<String>();
 	SendableChooser<String> shootOptions = new SendableChooser<String>();
-	// Both joysticks
+
+	// Pad1 and Pad2 declared as the two joysticks for Teleoperated control
 	Joystick pad1;
 	Joystick pad2;
-	// Motors and sensors being declared Poland let hitler invade
+
+	// Drive for the drive train
 	RobotDrive drive;
+
+	// Numerous motors of the system
 	Spark rightMotor, leftMotor, launcherMotor, ropeClimb, intakeMotor, intakeMotorDos, agitator;
 
+	/*
+	 * Three different encoders:
+	 * Encode: Encoder that measures rotation of the launcher
+	 * leftTrain: Encoder that measures rotation of the leftDriveTrain
+	 * rigthtTrain: Encoder that measures rotation of the rightDriveTrain
+	 * Encode.EncodingType.k4x is the type of Encoder used (measures 4 ticks an actual tick which is internally compensated for).
+	 */
 	Encoder encode = new Encoder(0, 1, false, Encoder.EncodingType.k4X);
 	Encoder leftTrain = new Encoder(2, 3, false, Encoder.EncodingType.k4X);
 	Encoder rightTrain = new Encoder(4, 5, false, Encoder.EncodingType.k4X);
 
-	BuiltInAccelerometer acc = new BuiltInAccelerometer();
-	ADXRS450_Gyro gyro;
-	Timer time = new Timer();
+	// Initializes a gyrometer that allows the system to receive feedback on orientation
 
+	ADXRS450_Gyro gyro;
+
+	// Creates PID constants for the PID launcher (launchControl)
+	private double kp, ki, kd;
+
+	// Initializes a PID control mechanism to converge to proper launcher shooting speeds 
 	PIDController launchControl;
 
 	/*
-	 * Sets up a "State" system for the gear autonomous Much easier than setting
-	 * up time based if, else systems
+	 * Sets up a "State" system for the gear autonomous 
+	 * Optimal relative to than setting up time based if, else systems
 	 */
 
 	private enum GearStates
@@ -74,26 +73,27 @@ public class Robot extends IterativeRobot
 		FirstMove(), FirstWait(), Rotate(), WallHump(), Wait(), UnHump(), RotateReverse(), PossibleShoot();
 	}
 
-	private GearStates gearState;
+	// Creates a simple binary protocol to pass as a parameter to tell the drive functions the direction of movement
 
-	DistanceMeter distanceMeter;
-	boolean previousButton = false;
-	boolean previousButton2 = false;
-	boolean currentButton = false;
-	boolean currentButton2 = false;
-	double speed = 1100;
+	private enum Direction
+	{
+		FORWARD(), BACKWARD();
+	}
+
+	private GearStates gearState;
 
 	private double agitatorPower = .35;
 
-	// Climber power + intake power
+	// Intake power of the 2 intake motors
 	private double intakePower = .75;
+
+	// Two climb constants (full power, grip power)
 	private double climbFullPower = 1.0;
 	private double climbGripPower = 0.7;
 
+	// Default launch power, and launchControlType
 	private double launchPower = .8;
-
-	// 2 = pid
-	private int launchControlType = 0;
+	private int launchControlType = 2;
 
 	// Shoot/no shoot chooser
 	private String shoot = "Shoot", noShoot = "Don't shoot";
@@ -105,27 +105,27 @@ public class Robot extends IterativeRobot
 
 	private double autoMotorPower = .40;
 
-	private double baselineMotor = .8;
-
+	// Primitive time constants for drive times
 	private double firstDrive = 83D;
 	private double autoRotate = 0.51D;
 	private double secondDrive = 21D;
 
+	// Creates a camera object to push to the SmartDashboard
 	private UsbCamera camera;
 
+	// Sets some constants to established a full turn and a full turn circumference
 	private double ticksPerRev = 360.0;
 	private double wheelCircum = 6.0 * Math.PI;
 
+	// Creates a preferences object later initialized in order to get constants from the SmartDashboard
 	private Preferences prefs;
 
 	private boolean rightInv, leftInv;
 
-	private double kp, ki, kd;
 	private double rightMultiplier = .95;
 
 	/**
-	 * \ This function is run when the robot is first started up and should be
-	 * used for any initialization code.
+	 * \ This function is run when the robot is first started up and should be used for any initialization code.
 	 */
 	@Override
 	public void robotInit()
@@ -133,6 +133,7 @@ public class Robot extends IterativeRobot
 		pushToStatus("ROBOT INIT - ROBOT INITIALIZATION");
 
 		/*
+		 * Adds the various string options for the autonomous choice board on the SmartDashboard
 		 */
 		autoChoose.addDefault("Default Auto", defaultAuto);
 		autoChoose.addObject("Red Gear (Left Gear)", redGear);
@@ -141,7 +142,10 @@ public class Robot extends IterativeRobot
 		autoChoose.addObject("Adjust Test", test);
 		autoChoose.addObject("Nothing", nothing);
 
+		// Initializes the Camera
+
 		camera = CameraServer.getInstance().startAutomaticCapture(0);
+
 		/*
 		 * Sets up Shooting / Not Shooting
 		 */
@@ -155,7 +159,7 @@ public class Robot extends IterativeRobot
 		SmartDashboard.putData("Shoot Options", shootOptions);
 
 		/*
-		 * Resets the gyro
+		 * Initializes the gyro and calibrates the gyro's definition of "straight", a.k.a 0 degree rotation
 		 */
 		gyro = new ADXRS450_Gyro();
 		gyro.calibrate();
@@ -171,100 +175,110 @@ public class Robot extends IterativeRobot
 		intakeMotorDos = new Spark(5);
 		agitator = new Spark(6);
 		drive = new RobotDrive(rightMotor, leftMotor);
-		acc = new BuiltInAccelerometer();
-		distanceMeter = new DistanceMeter(acc);
 
+		// Sets the distance per tick for both the left and right trains (encoder functions)
 		leftTrain.setDistancePerPulse(wheelCircum / ticksPerRev);
 		leftTrain.setReverseDirection(true);
 
 		rightTrain.setDistancePerPulse(wheelCircum / ticksPerRev);
 
-		/*
-		 * Sets up user controls *joysticks*
-		 */
+		// Sets up user controls *joysticks*
 		pad1 = new Joystick(0);
 		pad2 = new Joystick(1);
 
-		// Motor is backwards
+		// Launcher motor rotates inwards instead of out, so it needs to be rotated
 		launcherMotor.setInverted(true);
 
+		// Initializes the preferences from the SmartDashboard
 		setPreferences();
 
+		// Initializes PID constants
 		kp = prefs.getDouble("KP", Math.pow(10, -6));
 		ki = prefs.getDouble("KI", 0.0);
 		kd = prefs.getDouble("KD", Math.pow(10, -7));
-
-		rightInv = rightMotor.getInverted();
-		leftInv = leftMotor.getInverted();
 
 		pushToStatus("ROBOT INIT - Finished preferences and inits");
 	}
 
 	public void setPreferences()
 	{
-		/*
-		 * *Attempts to* load data from the Preferences Board Goal to control
-		 * things without rebuilding
-		 */
+		// *Attempts to* load data from the Preferences Board Goal to control things without rebuilding
 		prefs = Preferences.getInstance();
 
+		//
 		firstDrive = prefs.getDouble("First Drive", 62.1145D);
 		autoRotate = prefs.getDouble("Auto Rotate", 51.0);
 		secondDrive = prefs.getDouble("Second Drive", 21.681D);
+
+		/*
+		* Sets the PID launcher goal + the tolerance for the launcher speed
+		* Tolerance => if |launcher.getSpeed() - goal| <= tolerance, it's considered on target
+		*/
 		tickPSGoal = prefs.getInt("TicksSecond", tickPSGoal);
 		tickPSTolerance = prefs.getInt("TicksTolerance", tickPSTolerance);
 
+		// Gets the camera goal FPS, width, and height
 		int fps = prefs.getInt("FPS", 15);
 		int width = prefs.getInt("Camera Width", 640);
 		int height = prefs.getInt("Camera Height", 480);
 
+		// Sets the camera fps, width, and height using preference options
 		camera.setFPS(fps);
 		camera.setResolution(width, height);
 
+		// Gets whether or not we want the right and left motor inverted (leave these options as in on SmartDashboard unless you've fixed the drain train issue)
 		rightInv = prefs.getBoolean("Right Inverted", false);
 		leftInv = prefs.getBoolean("Left Inverted", false);
 
+		// Sets the inversions based on the preference options
 		rightMotor.setInverted(rightInv);
 		leftMotor.setInverted(leftInv);
 
+		// Gets PID constants from Prefs
 		kp = prefs.getDouble("KP", 1);
 		ki = prefs.getDouble("KI", 0);
 		kd = prefs.getDouble("KD", 0);
 
+		// Option in order to increase / dampen motor power to compensate for weaker / stronger motor
 		rightMultiplier = prefs.getDouble("Right Motor Multiplier", rightMultiplier);
 
+		// Sets a default launcher power in case of flat rate shooting w/o PID Control (shoot type dictated by launchControlType)
 		launchPower = prefs.getDouble("Launcher Power", launchPower);
 		launchControlType = (int) prefs.getDouble("Launcher Control Type", 0.0);
 
-		baselineMotor = launchPower;
-
+		// Initializes the launchControl in the case that it hasn't been created yet, else just updates the PID constants
 		if (launchControl == null)
 		{
-			// control = new PIDController(kp, ki, kd, baselineMotor, encode,
-			// launcherMotor);
 			launchControl = new PIDController(kp, ki, kd, encode, launcherMotor);
-
-		} else
+		}
+		else
 		{
-			// control.setPID(kp, ki, kd, baselineMotor);
 			launchControl.setPID(kp, ki, kd);
 		}
 
+		// Pushes the data from CAMREA + PID options back to SmartDashboard
 		SmartDashboard.putString("Camera Stats", String.format("Width: %d, Height: %d, FPS: %d", width, height, fps));
 		SmartDashboard.putString("PID Constants", String.format("P: %f, I: %f, D: %f", kp, ki, kd));
 	}
 
+	// Helper function to push messages on SmartDashboard (gets irritating to type out)
 	public void pushToStatus(String status)
 	{
 		SmartDashboard.putString("STATUS: ", status);
 	}
 
+	/*
+	 * Resets the left and right drive train encoders to read 0
+	 */
 	public void resetTrainEncoders()
 	{
 		leftTrain.reset();
 		rightTrain.reset();
 	}
 
+	/*
+	 * Describes the actions done by the robot during the period between enables (i.e. any time the robot is disabled)
+	 */
 	@Override
 	public void disabledPeriodic()
 	{
@@ -275,72 +289,76 @@ public class Robot extends IterativeRobot
 
 	double ratio = 1.0;
 
+	/**
+	 * @param degrees: the degrees the robot should rotate setting 0 to forward (clockwise rotation) 
+	 * @return true / false
+	 * true: The robot has rotated at least the number of degrees it was told to. "Process" has ended.
+	 * false: The robot has not rotated the number of degrees it was told to. The "Process" is still continuing;
+	 * 
+	 * Note: This works better if you think of this function paired with the return statement as a while loop. 
+	 * 		The program continues to "loop" until the gyro location is within the tolerance.
+	 * 		
+	 * Note 2: The resetGyro calls are meant to allow the function to be reused (the boolean resetGyro is used by conditionallResetGyro() to calibrate location 0)
+	 * 
+	 * Note 3: Please replace this function with a PID controller for the wheels in the future :) <3 ~Aneesh
+	 */
 	public boolean rotateDegrees(double degrees)
 	{
-		/*
-		 * Only resets the gyro once per "Rotate call" Otherwise the robot will
-		 * continously rotate
-		 */
+		// Only resets the gyro once per "Rotate call" Otherwise the robot will continuously rotate
 		conditionallyResetGyro();
 
 		double currentAngle = gyro.getAngle();
 
-		// Continues to enter here while DELTA > tolerance == .25 degrees
+		// Continues to enter here while DELTA > tolerance == .5 degrees
 		if (Math.abs(currentAngle - degrees) > .5)
 		{
+			double motorPower = autoMotorPower * ratio;
+
 			if (degrees > 0)
 			{
 				if (currentAngle < degrees)
 				{
 					// If it hasn't turned RIGHT enough
-					leftMotor.set(autoMotorPower * ratio);
-					rightMotor.set(-autoMotorPower * ratio);
+					driveLeft(motorPower, Direction.FORWARD);
+					driveRight(motorPower, Direction.BACKWARD);
 
-					// Returns that not enough rotation
 					return false;
-				} else
+				}
+				else
 				{
-					// Occurs when DELTA < Tolerance == .25 degrees, so process
-					// ends
-
 					resetGyro = true;
 
-					// Returns that rotation is done
 					return true;
 				}
-			} else if (degrees < 0)
+			}
+			else if (degrees < 0)
 			{
 				if (currentAngle > degrees)
 				{
 					// If it hasn't turned LEFT enough
-					leftMotor.set(-autoMotorPower * ratio);
-					rightMotor.set(autoMotorPower * ratio);
+					driveLeft(motorPower, Direction.BACKWARD);
+					driveRight(motorPower, Direction.FORWARD);
 
-					// Retusn that not even rotation
 					return false;
-				} else
+				}
+				else
 				{
-					// Occurs when DELTA < Tolerance == .25 degrees, so process
-					// ends
-					resetGyro = false;
+					resetGyro = true;
 
-					// Returns that enough rotation
 					return true;
 				}
 			}
-			// Exits out of the function while isProcessing is still true
 			return false;
 		}
-		// Occurs when DELTA < Tolerance == .25 degrees, so process ends
 
 		resetGyro = true;
 
-		/*
-		 * States that the robot is within the tolerance => returns true
-		 */
-
 		return true;
 	}
+
+	/**
+	 * Some random auto that really has no use but to run straight at .5 speed for 10 seconds. I'm pretty sure the (drivetrain) orientation is off too.
+	 */
 
 	long startTime = 0L;
 
@@ -355,22 +373,19 @@ public class Robot extends IterativeRobot
 			pushToStatus("TIME BASED DEFAULT AUTO - RUNNING STRAIGHT");
 			leftMotor.set(.5);
 			rightMotor.set(.5);
-		} else
+		}
+		else
 		{
 			stopMotors();
 		}
 	}
 
 	/*
-	 * This autonomous (along with the chooser code above) shows how to select
-	 * between different autonomous modes using the dashboard. The sendable
-	 * chooser code works with the Java SmartDashboard. If you prefer the
-	 * LabVIEW Dashboard, remove all of the chooser code and uncomment the
-	 * getString line to get the auto name from the text box below the Gyro
-	 *
-	 * You can add additional auto modes by adding additional comparisons to the
-	 * switch structure below with additional strings. If using the
-	 * SendableChooser make sure to add them to the chooser code above as well.
+	 * This autonomous (along with the chooser code above) shows how to select between different autonomous modes using the dashboard. 
+	 * The sendable chooser code works with the Java SmartDashboard. 
+	 * If you prefer the LabVIEW Dashboard, remove all of the chooser code and uncomment the getString line to get the auto name from the text box below the Gyro
+	 * You can add additional auto modes by adding additional comparisons to the switch structure below with additional strings. 
+	 * If using the SendableChooser make sure to add them to the chooser code above as well.
 	 */
 	@Override
 	public void autonomousInit()
@@ -379,7 +394,6 @@ public class Robot extends IterativeRobot
 
 		// Chooses the autonomous chosen on the Dashboard
 		autoSelected = (String) autoChoose.getSelected();
-		// autoSelected = redGear;
 
 		// Decides whether or not to shoot
 		toShoot = shootOptions.getSelected().equals(shoot);
@@ -394,27 +408,20 @@ public class Robot extends IterativeRobot
 		SmartDashboard.putString("Autonomous Selected:", autoSelected);
 		SmartDashboard.putBoolean("Shooting Option Selected: ", toShoot);
 
+		// Any pre-autonomous movement on the drive train shouldn't be counted
 		resetTrainEncoders();
 
 		System.out.println("Autonomous choosen: " + autoSelected);
 
+		// Flips the inversions of the system
 		rightMotor.setInverted(!rightInv);
 		leftMotor.setInverted(!leftInv);
 
-		// Resets the gyro back to 0
+		// Sets the current orientation of the robot to the default
 		gyro.reset();
 
 		pushToStatus("AUTO INIT - Finishing AUTO INIT");
 	}
-
-	/**
-	 * This function is called periodically during
-	 */
-
-	/*
-	 * Left motor should have positive motor values Right motor should have
-	 * negative motor values
-	 */
 
 	// A boolean to prevent rotation of the bot more than once
 	boolean rotated = false;
@@ -437,10 +444,9 @@ public class Robot extends IterativeRobot
 		SmartDashboard.putBoolean("Left inverted", leftMotor.getInverted());
 		SmartDashboard.putBoolean("Right inverted", rightMotor.getInverted());
 
-		
 		SmartDashboard.putNumber("Left Train Movement", leftTrain.getDistance());
 		SmartDashboard.putNumber("Right Train Movement", rightTrain.getDistance());
-		
+
 		switch (autoSelected)
 		{
 		case defaultAuto:
@@ -471,28 +477,6 @@ public class Robot extends IterativeRobot
 	}
 
 	/**
-	 * Just a debug function
-	 */
-	long driveStart = 0L;
-
-	public void driveFor3()
-	{
-		if (driveStart == 0L)
-		{
-			driveStart = System.nanoTime();
-		}
-
-		if (System.nanoTime() - driveStart < 3000000000L)
-		{
-			leftMotor.set(-autoMotorPower);
-			rightMotor.set(-autoMotorPower);
-		} else
-		{
-			stopMotors();
-		}
-	}
-
-	/**
 	 * Simple 45 degree rotation
 	 */
 	public void rotateDebug(boolean x)
@@ -505,18 +489,20 @@ public class Robot extends IterativeRobot
 			{
 				SmartDashboard.putBoolean("Turned", true);
 				rotated = true;
-			} else
+			}
+			else
 			{
 				SmartDashboard.putBoolean("Turned", false);
 			}
-		} else
+		}
+		else
 		{
 			stopMotors();
 		}
 	}
 
 	/**
-	 * Just a function to completey stop both drive train motors
+	 * Just a function to completely stop both drive train motors
 	 */
 	public void stopMotors()
 	{
@@ -530,9 +516,9 @@ public class Robot extends IterativeRobot
 	}
 
 	/**
-	 * Funky gear is the major autonomous we are currently using Boolean
-	 * onBlueSide literally checks whether its on the blue side or not => This
-	 * is important because the field is a mirror, not a diagonal rotation
+	 * Welcome to my (@author Aneesh's) horrendous state machine.
+	 * It works through an enumeration of states (listed at the declarations of this program) that are cycled through as the bot autonomous continues along it's adventure
+	 * Only God and I knew what I was coding when I did. Now only God knows.
 	 */
 
 	boolean motorsStopped = false, resetGyro = false;
@@ -545,40 +531,46 @@ public class Robot extends IterativeRobot
 		if (gearState == GearStates.FirstMove)
 		{
 			/*
-			 * Sets off gyro only if it hasn't been reset before Turns off
-			 * resetGyro => false, have to turn it back to to reuse function
+			 * Sets off gyro only if it hasn't been reset before Turns off resetGyro => false, have to turn it back to to reuse function
 			 */
 			conditionallyResetGyro();
 
 			if (!driveStraightDistance(firstDrive, true))
 			{
 				SmartDashboard.putNumber("First Drive Distance", averageDisplacement());
-			} else
+			}
+			else
 			{
 				// Puts bot into phase of waiting for motor before rotation
 				gearState = GearStates.FirstWait;
-				// Stops motors before rottion
+
+				// Stops motors before rotation
 				stopMotors();
+
 				// Resets gyro so conditionallyResetGyro() can be used again
 				resetGyro = true;
+
 				// Sets off long timer to end wait later on
 				waitStarted = System.nanoTime();
 				resetTrainEncoders();
 			}
-		} else if (gearState == GearStates.FirstWait)
+		}
+		else if (gearState == GearStates.FirstWait)
 		{
 			if (System.nanoTime() - waitStarted <= 750000000)
 			{
 				/**
 				 * Actually does nothing, that's the point
 				 */
-			} else
+			}
+			else
 			{
 				// Sets the gear to rotate mode
 				gearState = GearStates.Rotate;
 			}
 
-		} else if (gearState == GearStates.Rotate)
+		}
+		else if (gearState == GearStates.Rotate)
 		{
 			if (!motorsStopped)
 			{
@@ -587,12 +579,6 @@ public class Robot extends IterativeRobot
 				motorsStopped = true;
 			}
 
-			/**
-			 * rotateDegrees is a boolean Returns true when rotate has been
-			 * completed, false when it hasn't. This if statement continues to
-			 * call until it completes Bypasses the Watchdog Thread of the
-			 * system to allow us to effectively loop
-			 */
 			if (rotateDegrees(turnValue))
 			{
 				// Stops motors if we have rotated enough
@@ -603,17 +589,18 @@ public class Robot extends IterativeRobot
 				SmartDashboard.putBoolean("Turned", true);
 
 				/*
-				 * Sets a rotationCompleted long time to time the forward
-				 * movement
+				 * Sets a rotationCompleted long time to time the forward movement
 				 */
 				rotationCompleted = System.nanoTime();
-			} else
+			}
+			else
 			{
 				// Else, tells us that it hasn't turned
 				SmartDashboard.putBoolean("Turned", false);
 				resetTrainEncoders();
 			}
-		} else if (gearState == GearStates.WallHump)
+		}
+		else if (gearState == GearStates.WallHump)
 		{
 			// Again resets gyro
 			conditionallyResetGyro();
@@ -621,7 +608,8 @@ public class Robot extends IterativeRobot
 			if (!driveStraightDistance(secondDrive, true))
 			{
 				SmartDashboard.putNumber("Second Drive Distance", averageDisplacement());
-			} else
+			}
+			else
 			{
 				stopMotors();
 				gearState = GearStates.Wait;
@@ -629,19 +617,22 @@ public class Robot extends IterativeRobot
 				wallHumpDone = System.nanoTime();
 				resetTrainEncoders();
 			}
-		} else if (gearState == GearStates.Wait)
+		}
+		else if (gearState == GearStates.Wait)
 		{
 			if (System.nanoTime() - wallHumpDone <= 5000000000L)
 			{
 				// Do nothing waiting for gear pickup
 
-			} else
+			}
+			else
 			{
 				waitDone = System.nanoTime();
 				// gearState = GearStates.UnHump;
 				gearState = GearStates.Wait;
 			}
-		} else
+		}
+		else
 		{
 			stopMotors();
 		}
@@ -669,7 +660,8 @@ public class Robot extends IterativeRobot
 			adjust();
 
 			return false;
-		} else
+		}
+		else
 		{
 			stopMotors();
 			return true;
@@ -700,8 +692,7 @@ public class Robot extends IterativeRobot
 		rightMotor.setInverted(true);
 		leftMotor.setInverted(true);
 
-		pushToStatus(String.format("TELE OP INIT -  Inverted Motors : Inverted Status - R:%b L:%b",
-				rightMotor.getInverted(), leftMotor.getInverted()));
+		pushToStatus(String.format("TELE OP INIT -  Inverted Motors : Inverted Status - R:%b L:%b", rightMotor.getInverted(), leftMotor.getInverted()));
 
 		resetTrainEncoders();
 	}
@@ -710,17 +701,18 @@ public class Robot extends IterativeRobot
 	public void teleopPeriodic()
 	{
 		pushToStatus("TELE OP PERIODIC - Running TELE OP Periodic");
+
+		/**
+		 * Prints out a myriad of diagnostics that guaranteedly mean absolutely nothing to the driver. 
+		 * Mainly useful for debugging at the competition where 90% of the code is written.
+		 */
 		SmartDashboard.putNumber("Encoder Speed:", dashboardFormat(encode.getRate()));
 		SmartDashboard.putNumber("Agitator Speed:", dashboardFormat(agitatorPower));
 		SmartDashboard.putNumber("Angle Rotation", dashboardFormat(gyro.getAngle()));
-
 		SmartDashboard.putNumber("Left Train Movement", leftTrain.getDistance());
 		SmartDashboard.putNumber("Right Train Movement", rightTrain.getDistance());
 
-		prefs = Preferences.getInstance();
-
-		tickPSGoal = prefs.getInt("TicksSecond", tickPSGoal);
-
+		// Does all the functions associated with driving for the robot
 		driveDefault();
 		shoot();
 		intake();
@@ -728,6 +720,9 @@ public class Robot extends IterativeRobot
 		agitate();
 	}
 
+	/*
+	 * Simple tickRate => rotation converter using the fact that a rotation is 1024.0 ticks
+	 */
 	public double rotations(double rate)
 	{
 		return rate / 1024.0;
@@ -751,11 +746,13 @@ public class Robot extends IterativeRobot
 			if (Math.abs(diff) >= tickPSTolerance)
 			{
 				SmartDashboard.putString("SHOOT", "Don't Shoot");
-			} else
+			}
+			else
 			{
 				SmartDashboard.putString("SHOOT", "Shoot");
 			}
-		} else
+		}
+		else
 		{
 			launchControl.setPID(kp, ki, kd, 0.0);
 			launchControl.setSetpoint(0.0);
@@ -774,6 +771,16 @@ public class Robot extends IterativeRobot
 		}
 	}
 
+	/**
+	 * Create a basic static utility function (in case this program grows past a single class) that allows you to limit a variable value between an upper bound and lower bound
+	 * @param x, min, max
+	 * x: basic variable input that you'd like to limit
+	 * min: minimum value in the range you'd like
+	 * max: maximum value in the range you'd like
+	 * 
+	 * @return x' (x prime)
+	 * x' : a value min <= x' <= max 
+	 */
 	public static double limit(double x, double min, double max)
 	{
 		if (x >= max)
@@ -784,11 +791,6 @@ public class Robot extends IterativeRobot
 			return x;
 	}
 
-	public double getRPM(double ticksPS)
-	{
-		return ticksPS / 1440.0;
-	}
-
 	public void centralGear()
 	{
 		conditionallyResetGyro();
@@ -797,10 +799,14 @@ public class Robot extends IterativeRobot
 
 		if (averageDisplacement() < distance)
 		{
+			driveLeft(autoMotorPower, Direction.BACKWARD);
+			driveRight(autoMotorPower, Direction.BACKWARD);
+
 			leftMotor.set(-autoMotorPower);
 			rightMotor.set(autoMotorPower);
 			adjust();
-		} else
+		}
+		else
 		{
 			stopMotors();
 			resetGyro = true;
@@ -808,21 +814,49 @@ public class Robot extends IterativeRobot
 	}
 
 	/*
-	 * long startAuto = 0L;
+	 * Used in autonomous to compensate for possible mismatched motor strengths (even at the same powers)
+	 * Acts as a simple P-control system (if you wanted an official name).
 	 * 
-	 * public void centralGear() { if (startAuto == 0L) startAuto =
-	 * System.nanoTime();
-	 * 
-	 * if ((System.nanoTime() - startAuto) < (Math.pow(10, 9) * 3)) {
-	 * leftMotor.set(.4); rightMotor.set(.4); } }
+	 * Note: Not as efficient as a PID control system, but works absolutely fine for tuning a straight direction
 	 */
 	public void adjust()
 	{
+		// Gets the angle of rotation off straight of the robot
 		double angle = gyro.getAngle();
 
+		// Adjusts the angle by a factor of 1/100 to use as a P-control system
 		double delta = angle / 100.0;
-		leftMotor.set(leftMotor.get() - delta);
-		rightMotor.set(rightMotor.get() + delta);
+
+		driveLeft(leftMotor.get() - delta, Direction.BACKWARD);
+		driveRight(rightMotor.get() + delta, Direction.BACKWARD);
+	}
+
+	/**
+	 * @param 
+	 * double power: 0.0 - 1.0
+	 * Direction direction: FORWARD || BACKWARD
+	 */
+	public void driveLeft(double power, Direction direction)
+	{
+		power = Math.abs(power);
+
+		power = (direction == Direction.FORWARD) ? power : -power;
+
+		leftMotor.set(power);
+	}
+
+	/**
+	 * @param 
+	 * double power: 0.0 - 1.0
+	 * Direction direction: FORWARD || BACKWARD
+	 */
+	public void driveRight(double power, Direction direction)
+	{
+		power = Math.abs(power);
+
+		power = (direction == Direction.FORWARD) ? -power : power;
+
+		rightMotor.set(power);
 	}
 
 	public void testAuto()
@@ -838,12 +872,6 @@ public class Robot extends IterativeRobot
 
 	public void defaultAuto()
 	{
-		/*
-		 * if (System.nanoTime() - autoStarted <= autoRunTime / 15) {
-		 * leftMotor.set(autoMotorPower); rightMotor.set(-autoMotorPower); }
-		 * else { leftMotor.stopMotor(); rightMotor.stopMotor(); }
-		 */
-
 		boolean drove = false;
 
 		if (!drove)
@@ -853,11 +881,13 @@ public class Robot extends IterativeRobot
 				SmartDashboard.putNumber("Left Wheel rotation", leftTrain.getDistance());
 				SmartDashboard.putNumber("Right Wheel rotation", rightTrain.getDistance());
 				SmartDashboard.putBoolean("Default Done", false);
-			} else
+			}
+			else
 			{
 				drove = true;
 			}
-		} else
+		}
+		else
 		{
 			SmartDashboard.putBoolean("Default Done", true);
 			stopMotors();
@@ -905,18 +935,21 @@ public class Robot extends IterativeRobot
 			{
 				leftMotorSpeed = moveValue - rotateValue;
 				rightMotorSpeed = Math.max(moveValue, rotateValue);
-			} else
+			}
+			else
 			{
 				leftMotorSpeed = Math.max(moveValue, -rotateValue);
 				rightMotorSpeed = moveValue + rotateValue;
 			}
-		} else
+		}
+		else
 		{
 			if (rotateValue > 0.0)
 			{
 				leftMotorSpeed = -Math.max(-moveValue, rotateValue);
 				rightMotorSpeed = moveValue + rotateValue;
-			} else
+			}
+			else
 			{
 				leftMotorSpeed = moveValue - rotateValue;
 				rightMotorSpeed = -Math.max(-moveValue, -rotateValue);
@@ -934,10 +967,12 @@ public class Robot extends IterativeRobot
 		if (pad1.getRawButton(3))
 		{
 			agitator.set(agitatorPower);
-		} else if (pad1.getRawButton(4))
+		}
+		else if (pad1.getRawButton(4))
 		{
 			agitator.set(-agitatorPower);
-		} else
+		}
+		else
 		{
 			agitator.stopMotor();
 		}
@@ -947,29 +982,32 @@ public class Robot extends IterativeRobot
 	{
 		if (pad1.getRawButton(5))
 		{
+			//  
 			intakeMotor.set(intakePower);
 			intakeMotorDos.set(-intakePower);
-		} else if (pad1.getRawButton(2))
+		}
+		else if (pad1.getRawButton(2))
 		{
 			intakeMotor.set(-intakePower);
 			intakeMotorDos.set(intakePower);
-		} else
+		}
+		else
 		{
+			// Stops both motors if none of the buttons were pressed
 			intakeMotor.stopMotor();
 			intakeMotorDos.stopMotor();
 		}
 	}
 
-	/*
-	 * Climbs the rope using 3 buttons
-	 */
-
 	public void climbRope()
 	{
+		// Full power up the rope
 		if (pad2.getRawButton(1))
 			ropeClimb.set(climbFullPower);
+		// .7 power on the rope
 		else if (pad2.getRawButton(2))
 			ropeClimb.set(climbGripPower);
+		// Stops the motor if none of the buttons were pressed 
 		else
 			ropeClimb.stopMotor();
 	}
